@@ -900,6 +900,9 @@
     border: 1px solid var(--line-soft);
     border-left: 3px solid var(--ink);
     background: var(--paper);
+    position: sticky;
+    top: 0;
+    z-index: 6;
   }
   .exam-timer {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -929,6 +932,23 @@
   }
   .exam-essay { min-height: 260px; }
   .exam-summary .score { font-size: 52px; }
+  .quiz-sheet { display: flex; flex-direction: column; }
+  .quiz-q {
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .quiz-q:last-child { border-bottom: 0; }
+  .quiz-q .pq-stem { margin-top: 10px; font-size: 16.5px; }
+  .quiz-q .essay-input { margin-top: 10px; }
+  .sheet-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: 8px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+    background: var(--bg);
+  }
 
   /* 收藏 */
   .kp-item { padding: 18px 0; border-bottom: 1px solid var(--line-soft); }
@@ -1363,7 +1383,7 @@
     <section class="page-intro">
       <div class="page-kicker">03 / PRACTICE</div>
       <h2 class="page-title">重新做题</h2>
-      <p class="page-lead">按练习记录筛选题目重做，或选择「整套卷」做全部选择题与大题，并带 180 分钟标准考试计时。</p>
+      <p class="page-lead">一次性列出整套卷的全部选择题与大题，在本页作答后统一提交判卷，并带 180 分钟标准考试计时。</p>
     </section>
 
     <section class="card" id="section-practice">
@@ -1375,8 +1395,8 @@
         </label>
         <label class="filter-label">模式
           <select class="filter-select" id="practice-mode">
-            <option value="choice">选择题练习</option>
-            <option value="exam">整套卷（含大题 · 180 分钟）</option>
+            <option value="exam">整套卷 · 全部题目一次性作答（180 分钟）</option>
+            <option value="choice">仅选择题</option>
           </select>
         </label>
         <label class="filter-label">筛选
@@ -2159,6 +2179,35 @@
       + ' · 生成时间 ' + (report.generated_at || '')
       + ' · 共 ' + count + ' 道需复习的题'
       + (essayCount ? ' · 已评大题 ' + essayCount + ' 道' : '');
+
+    var scoreParts = [];
+    if (entry) {
+      scoreParts.push('选择题 ' + ((entry.correct || 0) * 2) + ' / ' +
+        ((entry.answered || 0) * 2) + ' 分');
+      var paperEssays = (report.essays || []).filter(function (it) {
+        return it.page_path === paper;
+      });
+      if (paperEssays.length) {
+        var pScore = 0;
+        var pTotal = 0;
+        paperEssays.forEach(function (it) {
+          pScore += Number(it.score) || 0;
+          pTotal += Number(it.total) || 0;
+        });
+        scoreParts.push('已评大题 ' + fmtScore(pScore) + ' / ' + fmtScore(pTotal) + ' 分');
+      }
+    } else {
+      var reportStats = report.stats || {};
+      if (reportStats.choice_total !== undefined) {
+        scoreParts.push('选择题 ' + fmtScore(reportStats.choice_score || 0) + ' / ' +
+          fmtScore(reportStats.choice_total) + ' 分');
+      }
+      if (reportStats.essay_total) {
+        scoreParts.push('大题 ' + fmtScore(reportStats.essay_score || 0) + ' / ' +
+          fmtScore(reportStats.essay_total) + ' 分');
+      }
+    }
+    if (scoreParts.length) meta += ' · ' + scoreParts.join(' · ');
     if (state.fromDb) meta += ' · 来自本地数据库';
     $('result-meta').textContent = meta;
   }
@@ -2732,24 +2781,20 @@
     opts = opts || {};
     quiz = {
       list: sortQuestions(list),
-      idx: 0,
-      picked: [],
       picks: {},
       essayAnswers: {},
-      checked: false,
-      score: 0,
-      answered: 0,
       done: false,
       label: label,
       exam: !!opts.exam,
       examMinutes: opts.minutes || 180,
-      deadline: 0
+      deadline: 0,
+      result: null
     };
+    quiz.list.forEach(function (q) {
+      if (q.essay) quiz.essayAnswers[q.id] = q.draft || '';
+    });
     if (quiz.exam) {
       quiz.deadline = Date.now() + quiz.examMinutes * 60000;
-      quiz.list.forEach(function (q) {
-        if (q.essay) quiz.essayAnswers[q.id] = q.draft || '';
-      });
       startExamTimer();
     }
     renderQuiz();
@@ -2827,36 +2872,21 @@
       });
   }
 
-  function prevExamQuestion() {
-    if (!quiz || quiz.idx <= 0) return;
-    quiz.picks[quiz.list[quiz.idx].id] = quiz.picked.slice();
-    quiz.idx -= 1;
-    quiz.picked = (quiz.picks[quiz.list[quiz.idx].id] || []).slice();
-    renderQuiz();
-    $('section-practice').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function nextExamQuestion() {
-    if (!quiz) return;
-    quiz.picks[quiz.list[quiz.idx].id] = quiz.picked.slice();
-    if (quiz.idx + 1 >= quiz.list.length) { submitExam(); return; }
-    quiz.idx += 1;
-    quiz.picked = (quiz.picks[quiz.list[quiz.idx].id] || []).slice();
-    renderQuiz();
-    $('section-practice').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
   function submitExam() {
-    if (!quiz || !quiz.exam || quiz.done) return;
-    quiz.picks[quiz.list[quiz.idx].id] = quiz.picked.slice();
-
+    if (!quiz || quiz.done) return;
     var items = [];
     var drafts = [];
     var choices = 0;
     var correct = 0;
     var unanswered = 0;
+    var essayQuestions = 0;
+    var essayTotal = 0;
+    var pages = [];
     quiz.list.forEach(function (q) {
+      if (q.page_path && pages.indexOf(q.page_path) < 0) pages.push(q.page_path);
       if (q.essay) {
+        essayQuestions += 1;
+        essayTotal += Number(q.points) || 0;
         var answer = (quiz.essayAnswers[q.id] || '').trim();
         if (answer) drafts.push({ id: q.id, answer: answer });
         return;
@@ -2881,23 +2911,51 @@
       return;
     }
 
+    var stats = {
+      total: choices,
+      answered: choices - unanswered,
+      correct: correct,
+      wrong: choices - correct - unanswered,
+      unanswered: unanswered,
+      accuracy: choices ? Math.round(correct / choices * 1000) / 10 : 0,
+      choice_score: correct * 2,
+      choice_total: choices * 2,
+      essay_count: essayQuestions,
+      essay_answered: drafts.length,
+      essay_total: essayTotal
+    };
     var finish = function () {
       quiz.done = true;
-      quiz.examChoices = choices;
-      quiz.examCorrect = correct;
-      quiz.examScore = correct * 2;
-      quiz.examTotal = choices * 2;
-      quiz.examEssays = drafts.length;
-      quiz.examUnanswered = unanswered;
-      quiz.examElapsed = quiz.examMinutes * 60000 - (quiz.deadline - Date.now());
+      quiz.result = {
+        choices: choices,
+        correct: correct,
+        score: correct * 2,
+        total: choices * 2,
+        essays: drafts.length,
+        essayCount: essayQuestions,
+        essayTotal: essayTotal,
+        unanswered: unanswered,
+        elapsed: quiz.exam
+          ? quiz.examMinutes * 60000 - (quiz.deadline - Date.now())
+          : 0
+      };
       stopExamTimer();
       renderQuiz();
     };
+
+    if (STATIC_MODE) {
+      finish();
+      return;
+    }
+
     Promise.all([
       fetch('/api/attempts/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: items })
+        body: JSON.stringify({
+          items: items,
+          report: { scope: quiz.label, pages: pages, stats: stats }
+        })
       }).then(function (resp) { return resp.json(); }),
       fetch('/api/essays/drafts', {
         method: 'POST',
@@ -2915,11 +2973,17 @@
       });
   }
 
+  function countBy(list, fn) {
+    var n = 0;
+    list.forEach(function (item) { if (fn(item)) n += 1; });
+    return n;
+  }
+
   function renderQuiz() {
     var body = $('practice-body');
     if (!quiz) {
       body.innerHTML = '';
-      body.appendChild(el('div', 'practice-empty', '选择一种模式开始练习。'));
+      body.appendChild(el('div', 'practice-empty', '选择模式与筛选条件后开始做题。'));
       return;
     }
     if (quiz.done) {
@@ -2927,58 +2991,69 @@
       return;
     }
 
-    var q = quiz.list[quiz.idx];
     body.innerHTML = '';
-    if (quiz.exam) quiz.picked = (quiz.picks[q.id] || []).slice();
 
+    var choiceCount = countBy(quiz.list, function (q) { return !q.essay; });
+    var essayCount = quiz.list.length - choiceCount;
+    var essayTotal = 0;
+    quiz.list.forEach(function (q) { if (q.essay) essayTotal += Number(q.points) || 0; });
+
+    var bar = el('div', 'exam-bar');
     if (quiz.exam) {
-      var bar = el('div', 'exam-bar');
       var timer = el('span', 'exam-timer', '');
       timer.id = 'exam-timer';
       bar.appendChild(timer);
       bar.appendChild(el('span', 'pq-meta', '整套卷 · ' + quiz.examMinutes + ' 分钟'));
-      var finishBtn = el('button', 'btn exam-finish', '交卷');
-      finishBtn.type = 'button';
-      finishBtn.addEventListener('click', submitExam);
-      bar.appendChild(finishBtn);
-      body.appendChild(bar);
       updateExamTimer();
+    } else {
+      bar.appendChild(el('span', 'pq-meta', quiz.label));
     }
+    bar.appendChild(el('span', 'pq-meta',
+      '共 ' + quiz.list.length + ' 题 · 选择题 ' + choiceCount + ' 道' +
+      (essayCount ? ' · 大题 ' + essayCount + ' 道（' + essayTotal + ' 分）' : '')));
+    var finishBtn = el('button', 'btn exam-finish', '交卷判分');
+    finishBtn.type = 'button';
+    finishBtn.addEventListener('click', submitExam);
+    bar.appendChild(finishBtn);
+    body.appendChild(bar);
 
+    var sheet = el('div', 'quiz-sheet');
+    quiz.list.forEach(function (q, i) {
+      sheet.appendChild(renderSheetQuestion(q, i));
+    });
+    body.appendChild(sheet);
+
+    var foot = el('div', 'pq-actions sheet-foot');
+    var submit = el('button', 'btn exam-submit', '提交并判卷');
+    submit.type = 'button';
+    submit.addEventListener('click', submitExam);
+    foot.appendChild(submit);
+    foot.appendChild(el('span', 'pq-meta', '选择题交卷后统一判分；大题作答会保存，可去大题页 AI 评分。'));
+    body.appendChild(foot);
+  }
+
+  function renderSheetQuestion(q, index) {
+    var card = el('section', 'quiz-q');
     var head = el('div', 'pq-head');
     var left = el('div');
-    left.appendChild(el('span', 'pq-num', '第 ' + (q.num || '?') + ' 题'));
+    left.appendChild(el('span', 'pq-num', '第 ' + (q.num || (index + 1)) + ' 题'));
     var tagText = [q.subject].concat(q.tags || []).filter(Boolean).join(' · ');
     if (tagText) left.appendChild(el('span', 'pq-meta', '　' + tagText));
+    left.appendChild(el('span', 'pq-meta', '　' + (q.essay ? '解答题' : (q.multiple ? '多选' : '单选'))));
     head.appendChild(left);
-    head.appendChild(el(
-      'span',
-      'pq-progress',
-      quiz.label + '　' + (quiz.idx + 1) + ' / ' + quiz.list.length +
-        '　' + (q.essay ? '解答题' : (q.multiple ? '多选' : '单选'))
-    ));
-    body.appendChild(head);
-
     var s = q.stats || {};
     if (s.wrong || s.right) {
-      var hist = el('div', 'pq-history');
-      hist.appendChild(document.createTextNode(
-        '练习记录：做错 ' + (s.wrong || 0) + ' 次 · 做对 ' + (s.right || 0) + ' 次'
-      ));
-      if (s.last_correct === true) {
-        hist.appendChild(el('span', 'good', '　上次做对'));
-      } else if (s.last_correct === false) {
-        hist.appendChild(el('span', 'bad', '　上次做错'));
-      }
-      body.appendChild(hist);
+      head.appendChild(el('span', 'pq-progress',
+        '错 ' + (s.wrong || 0) + ' · 对 ' + (s.right || 0)));
     }
+    card.appendChild(head);
 
     if (q.stem_html) {
-      var stemBox = el('div', 'pq-stem rich-inline');
-      stemBox.innerHTML = q.stem_html;
-      body.appendChild(stemBox);
+      var stem = el('div', 'pq-stem rich-inline');
+      stem.innerHTML = q.stem_html;
+      card.appendChild(stem);
     } else if (q.stem) {
-      body.appendChild(el('div', 'pq-stem', q.stem));
+      card.appendChild(el('div', 'pq-stem', q.stem));
     }
 
     if (q.essay) {
@@ -2986,18 +3061,16 @@
       ta.placeholder = '在本地作答（原网页没有大题填写功能），交卷后会保存，可到大题页让 AI 评分…';
       ta.value = quiz.essayAnswers[q.id] || q.draft || '';
       ta.addEventListener('input', function () { quiz.essayAnswers[q.id] = ta.value; });
-      body.appendChild(ta);
-      if (q.points) {
-        body.appendChild(el('div', 'pq-meta', '满分 ' + q.points + ' 分'));
-      }
+      card.appendChild(ta);
+      if (q.points) card.appendChild(el('div', 'pq-meta', '满分 ' + q.points + ' 分'));
     } else {
+      var picked = quiz.picks[q.id] || [];
       var opts = el('div', 'pq-opts');
       (q.options || []).forEach(function (opt) {
         var letter = letterOf(opt.label);
-        var picked = quiz.picked.indexOf(letter) >= 0;
-        var correct = (q.answer || []).indexOf(letter) >= 0;
-        var btn = el('button', 'pq-opt');
+        var btn = el('button', 'pq-opt' + (picked.indexOf(letter) >= 0 ? ' sel' : ''));
         btn.type = 'button';
+        btn.setAttribute('data-letter', letter);
         btn.appendChild(el('span', 'pq-label', opt.label || ''));
         if (opt.html) {
           var richText = el('span', 'pq-text rich-inline');
@@ -3006,198 +3079,80 @@
         } else {
           btn.appendChild(el('span', 'pq-text', opt.text || '（图片选项，请点原题查看）'));
         }
-        if (quiz.checked) {
-          btn.disabled = true;
-          if (correct) btn.classList.add('correct');
-          else if (picked) btn.classList.add('wrong');
-        } else {
-          if (picked) btn.classList.add('sel');
-          btn.addEventListener('click', function () {
-            if (q.multiple) {
-              var i = quiz.picked.indexOf(letter);
-              if (i >= 0) quiz.picked.splice(i, 1);
-              else quiz.picked.push(letter);
-            } else {
-              quiz.picked = [letter];
-            }
-            if (quiz.exam) quiz.picks[q.id] = quiz.picked.slice();
-            renderQuiz();
+        btn.addEventListener('click', function () {
+          var cur = (quiz.picks[q.id] || []).slice();
+          if (q.multiple) {
+            var idx = cur.indexOf(letter);
+            if (idx >= 0) cur.splice(idx, 1);
+            else cur.push(letter);
+          } else {
+            cur = (cur.length === 1 && cur[0] === letter) ? [] : [letter];
+          }
+          quiz.picks[q.id] = cur;
+          Array.prototype.forEach.call(opts.children, function (child) {
+            child.classList.toggle('sel', cur.indexOf(child.getAttribute('data-letter')) >= 0);
           });
-        }
+        });
         opts.appendChild(btn);
       });
-      body.appendChild(opts);
+      card.appendChild(opts);
     }
 
-    if (quiz.checked) {
-      var ok = sameSet(quiz.picked, q.answer || []);
-      var fb = el('div', 'pq-feedback ' + (ok ? 'ok' : 'bad'));
-      fb.appendChild(el('div', null, ok
-        ? '答对了'
-        : '答错了 · 正确答案：' + ((q.answer || []).join('') || '—')));
-      if (q.explanation_html) {
-        var richExp = el('div', 'rich-inline');
-        richExp.style.marginTop = '8px';
-        richExp.innerHTML = q.explanation_html;
-        fb.appendChild(richExp);
-      } else if (q.explanation) {
-        var exp = el('div', null, q.explanation);
-        exp.style.marginTop = '6px';
-        fb.appendChild(exp);
-      }
-      body.appendChild(fb);
-    }
-
-    var actions = el('div', 'pq-actions');
-    if (quiz.exam) {
-      if (quiz.idx > 0) {
-        var prev = el('button', 'btn ghost', '上一题');
-        prev.type = 'button';
-        prev.addEventListener('click', prevExamQuestion);
-        actions.appendChild(prev);
-      }
-      var isLast = quiz.idx + 1 >= quiz.list.length;
-      var go = el('button', 'btn' + (isLast ? ' exam-submit' : ''), isLast ? '交卷' : '下一题');
-      go.type = 'button';
-      go.addEventListener('click', function () {
-        if (isLast) submitExam();
-        else nextExamQuestion();
-      });
-      actions.appendChild(go);
-    } else if (quiz.checked) {
-      var next = el('button', 'btn',
-        quiz.idx + 1 >= quiz.list.length ? '查看结果' : '下一题');
-      next.type = 'button';
-      next.addEventListener('click', nextQuestion);
-      actions.appendChild(next);
-    } else {
-      var submit = el('button', 'btn', '提交答案');
-      submit.type = 'button';
-      submit.disabled = quiz.picked.length === 0;
-      submit.addEventListener('click', submitAnswer);
-      actions.appendChild(submit);
-    }
-    if (q.question_url) actions.appendChild(linkEl('原题 ↗', q.question_url, 'qbtn'));
-    body.appendChild(actions);
-  }
-
-  function submitAnswer() {
-    if (!quiz || quiz.checked || !quiz.picked.length) return;
-    var q = quiz.list[quiz.idx];
-    quiz.checked = true;
-    quiz.answered += 1;
-    var ok = sameSet(quiz.picked, q.answer || []);
-    if (ok) quiz.score += 1;
-    recordAttempt(q, ok);
-    renderQuiz();
-  }
-
-  function recordAttempt(q, ok) {
-    if (!q.id || STATIC_MODE) return;
-    fetch('/api/attempt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: q.id,
-        page_path: q.page_path || '',
-        subject: q.subject || '',
-        num: q.num || '',
-        selected: quiz.picked,
-        answer: q.answer || [],
-        correct: ok
-      })
-    })
-      .then(function (resp) { return resp.json(); })
-      .then(function (data) {
-        if (data && data.stats) {
-          var fresh = data.stats[q.id];
-          if (fresh) {
-            q.stats = fresh;
-            state.attemptStats[q.id] = fresh;
-            if (quiz && quiz.checked && quiz.list[quiz.idx] === q) renderQuiz();
-          }
-        }
-      })
-      .catch(function () {});
-  }
-
-  function nextQuestion() {
-    quiz.idx += 1;
-    quiz.picked = [];
-    quiz.checked = false;
-    if (quiz.idx >= quiz.list.length) quiz.done = true;
-    renderQuiz();
-    if (!quiz.done) {
-      $('section-practice').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (q.question_url) card.appendChild(linkEl('原题 ↗', q.question_url, 'qbtn'));
+    return card;
   }
 
   function renderQuizSummary() {
     var body = $('practice-body');
     body.innerHTML = '';
+    var r = quiz.result || {};
+
+    var box = el('div', 'pq-summary');
+    box.appendChild(el('div', 'pq-progress', quiz.label + ' · 已交卷'));
+    box.appendChild(el('div', 'score', (r.score || 0) + ' / ' + (r.total || 0)));
+    box.appendChild(el('div', 'pq-meta', '选择题得分（每题 2 分）'));
+
+    var rows = el('div', 'summary-line');
+    var choiceText = el('span', null,
+      '选择题 答对 ' + (r.correct || 0) + ' / ' + (r.choices || 0) + ' 题');
+    if (r.unanswered) {
+      choiceText.appendChild(el('b', null, '（' + r.unanswered + ' 题未作答）'));
+    }
+    rows.appendChild(choiceText);
+    if (r.essayCount) {
+      rows.appendChild(el('span', null,
+        '大题 已存档 ' + (r.essays || 0) + ' 道 · 满分 ' + (r.essayTotal || 0) +
+        ' 分（去大题页 AI 评分后计入报告）'));
+    }
+    if (quiz.exam) {
+      var used = clockText(r.elapsed || 0);
+      rows.appendChild(el('span', null,
+        '用时 ' + used + (r.elapsed > quiz.examMinutes * 60000 ? '（超时）' : '')));
+    }
+    if (!STATIC_MODE) rows.appendChild(el('span', null, '本次成绩已写入历史报告'));
+    box.appendChild(rows);
+    body.appendChild(box);
 
     var actions = el('div', 'pq-actions');
-
-    if (quiz.exam) {
-      var box = el('div', 'pq-summary exam-summary');
-      box.appendChild(el('div', 'pq-progress', quiz.label + ' · 已交卷'));
-      box.appendChild(el('div', 'score', quiz.examScore + ' / ' + quiz.examTotal));
-      box.appendChild(el('div', 'pq-meta', '选择题得分（每题 2 分）'));
-
-      var rows = el('div', 'summary-line');
-      var choiceText = el('span', null,
-        '选择题 答对 ' + quiz.examCorrect + ' / ' + quiz.examChoices + ' 题');
-      if (quiz.examUnanswered) {
-        choiceText.appendChild(el('b', null, '（' + quiz.examUnanswered + ' 题未作答）'));
-      }
-      rows.appendChild(choiceText);
-      rows.appendChild(el('span', null,
-        '大题 已存档 ' + quiz.examEssays + ' 道，可去大题页让 AI 评分'));
-      var used = clockText(quiz.examElapsed || 0);
-      rows.appendChild(el('span', null,
-        '用时 ' + used + (quiz.examElapsed > quiz.examMinutes * 60000 ? '（超时）' : '')));
-      box.appendChild(rows);
-      body.appendChild(box);
-
-      var again = el('button', 'btn', '再考一次');
-      again.type = 'button';
-      again.addEventListener('click', function () {
-        beginQuiz(quiz.list, quiz.label, { exam: true, minutes: quiz.examMinutes });
-      });
+    var again = el('button', 'btn', '再做一遍');
+    again.type = 'button';
+    again.addEventListener('click', function () {
+      beginQuiz(quiz.list, quiz.label,
+        quiz.exam ? { exam: true, minutes: quiz.examMinutes } : undefined);
+    });
+    actions.appendChild(again);
+    if (r.essayCount) {
       var essayBtn = el('button', 'btn secondary', '去大题页评分');
       essayBtn.type = 'button';
       essayBtn.addEventListener('click', function () {
         go('essay');
         if (essayInitialized) loadEssays();
       });
-      var back = el('button', 'btn ghost', '返回');
-      back.type = 'button';
-      back.addEventListener('click', function () { quiz = null; renderQuiz(); });
-      actions.appendChild(again);
       actions.appendChild(essayBtn);
-      actions.appendChild(back);
-      body.appendChild(actions);
-      return;
     }
-
-    var rate = quiz.answered ? Math.round(quiz.score / quiz.answered * 100) : 0;
-
-    var box = el('div', 'pq-summary');
-    box.appendChild(el('div', 'pq-progress', quiz.label + ' · 已完成'));
-    box.appendChild(el('div', 'score', rate + '%'));
-    box.appendChild(el('div', 'pq-meta', '答对 ' + quiz.score + ' / ' + quiz.answered + ' 题'));
-    body.appendChild(box);
-
-    var again = el('button', 'btn', '再来一轮');
-    again.type = 'button';
-    again.addEventListener('click', function () { beginQuiz(quiz.list, quiz.label); });
-    var back = el('button', 'btn ghost', '返回报告');
+    var back = el('button', 'btn ghost', '返回');
     back.type = 'button';
-    back.addEventListener('click', function () {
-      quiz = null;
-      renderQuiz();
-    });
-    actions.appendChild(again);
+    back.addEventListener('click', function () { quiz = null; renderQuiz(); });
     actions.appendChild(back);
     body.appendChild(actions);
   }
