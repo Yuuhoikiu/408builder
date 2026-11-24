@@ -1101,6 +1101,82 @@
     margin-left: 8px;
   }
 
+  /* 大题 AI 评分 */
+  .essay-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+    background: #fff;
+  }
+  .essay-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .essay-head .qactions { margin-left: auto; }
+  .essay-stem { margin: 12px 0; font-size: 14px; line-height: 1.75; }
+  .essay-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0 10px; }
+  .essay-ref {
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border-left: 3px solid var(--accent);
+    background: #f8fbfa;
+    font-size: 13.5px;
+    border-radius: 0 8px 8px 0;
+  }
+  .essay-input {
+    width: 100%;
+    min-height: 130px;
+    resize: vertical;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: #374151;
+    background: #fcfcfd;
+    outline: none;
+  }
+  .essay-input:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+  }
+  .essay-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .essay-result {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    font-size: 13.5px;
+  }
+  .essay-result .score { font-size: 20px; font-weight: 800; color: var(--brand-dark); }
+  .essay-result .comment { margin-top: 6px; color: #374151; white-space: pre-wrap; }
+  .essay-history { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+  .essay-history div { padding: 4px 0; border-top: 1px dashed var(--line); }
+  .ai-settings { margin-top: 14px; border-top: 1px dashed var(--line); padding-top: 10px; }
+  .ai-settings summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  .ai-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .ai-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); }
+  .essay-status { font-size: 12.5px; color: var(--muted); }
+  .essay-status.error { color: var(--danger); }
+  .essay-status.ok { color: var(--accent); }
+  .essay-total {
+    width: 64px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    color: #374151;
+    background: #fcfcfd;
+    outline: none;
+  }
+  .essay-total:focus { border-color: var(--brand); }
+
   @media (max-width: 720px) {
     .wrap { padding: 0 20px 32px; }
     header.top .wrap { padding-top: 32px; }
@@ -1134,6 +1210,7 @@
         <a class="nav-item active local-only" href="#/import" data-route="import">导入</a>
         <a class="nav-item" href="#/report" data-route="report">报告</a>
         <a class="nav-item" href="#/practice" data-route="practice">重做</a>
+        <a class="nav-item local-only" href="#/essay" data-route="essay">大题</a>
         <a class="nav-item" href="#/saved" data-route="saved">收藏</a>
         <a class="nav-item manage-only" href="#/manage" data-route="manage">管理</a>
       </nav>
@@ -1263,9 +1340,47 @@
     </section>
   </div>
 
+  <div class="view local-only" id="view-essay">
+    <section class="page-intro">
+      <div class="page-kicker">04 / ESSAY</div>
+      <h2 class="page-title">大题 AI 评分</h2>
+      <p class="page-lead">读取题库中的解答题，写下你的作答，交给 AI 按参考答案分步评分；每次评分都会保存历史。</p>
+    </section>
+
+    <section class="card">
+      <div class="row">
+        <label class="filter-label">套卷
+          <select class="filter-select" id="essay-paper">
+            <option value="">全部套卷</option>
+          </select>
+        </label>
+        <button class="btn ghost" id="essay-reload" type="button">刷新题目</button>
+        <button class="btn ghost" id="essay-update-bank" type="button">更新题库</button>
+      </div>
+      <details class="ai-settings" id="ai-settings">
+        <summary>AI 设置（DeepSeek / OpenAI 兼容）</summary>
+        <div class="ai-grid">
+          <label>Base URL<input class="url-input" id="ai-base" placeholder="https://api.deepseek.com"></label>
+          <label>模型<input class="url-input" id="ai-model" placeholder="deepseek-chat"></label>
+          <label>API Key<input class="url-input" id="ai-key" type="password" placeholder="留空表示不修改"></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="ai-save" type="button">保存设置</button>
+          <span class="essay-status" id="ai-status"></span>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div id="essay-list">
+        <div class="practice-empty">正在读取大题…</div>
+      </div>
+    </section>
+  </div>
+
   <div class="view" id="view-saved">
     <section class="page-intro">
-      <div class="page-kicker">04 / SAVED</div>
+      <div class="page-kicker">05 / SAVED</div>
       <h2 class="page-title">知识点收藏</h2>
       <p class="page-lead">在错题卡片上点「知识点」，讲解页面正文会存进本地数据库，随时可以离线回看。</p>
     </section>
@@ -1285,7 +1400,7 @@
 
   <div class="view" id="view-manage">
     <section class="page-intro">
-      <div class="page-kicker">05 / MANAGE</div>
+      <div class="page-kicker">06 / MANAGE</div>
       <h2 class="page-title">数据与发布</h2>
       <p class="page-lead">管理本地数据库，导出可部署的静态站，或把数据快照同步到 GitHub 仓库。</p>
     </section>
@@ -2767,6 +2882,10 @@
   $('start-filtered').addEventListener('click', function () { startQuiz($('bank-filter').value); });
   $('start-wrong').addEventListener('click', function () { startQuiz('wrong'); });
   $('refresh-bank').addEventListener('click', refreshBank);
+  $('essay-reload').addEventListener('click', loadEssays);
+  $('essay-paper').addEventListener('change', loadEssays);
+  $('essay-update-bank').addEventListener('click', refreshEssayBank);
+  $('ai-save').addEventListener('click', saveAiSettings);
   $('modal-close').addEventListener('click', closeExplain);
   $('explain-modal').addEventListener('click', function (e) {
     if (e.target === this) closeExplain();
@@ -2775,7 +2894,264 @@
     if (e.key === 'Escape') closeExplain();
   });
 
-  // ---------- 静态模式 ----------
+  /* ---------------- 大题 AI 评分 ---------------- */
+  var essayInitialized = false;
+
+  function fmtScore(n) {
+    var v = Number(n);
+    return isFinite(v) ? (Math.round(v * 10) / 10).toString() : String(n);
+  }
+
+  function loadAiSettings() {
+    fetch('/api/ai/settings')
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        $('ai-base').value = data.base_url || '';
+        $('ai-model').value = data.model || '';
+        $('ai-status').className = 'essay-status';
+        $('ai-status').textContent = data.has_key
+          ? '已保存 Key：' + (data.key_masked || '')
+          : '尚未配置 API Key';
+      })
+      .catch(function () {});
+  }
+
+  function saveAiSettings() {
+    var status = $('ai-status');
+    status.className = 'essay-status';
+    status.textContent = '正在保存…';
+    fetch('/api/ai/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        base_url: $('ai-base').value.trim(),
+        model: $('ai-model').value.trim(),
+        api_key: $('ai-key').value.trim()
+      })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+          return data;
+        });
+      })
+      .then(function (data) {
+        $('ai-key').value = '';
+        status.className = 'essay-status ok';
+        status.textContent = data.has_key
+          ? '已保存，当前 Key：' + data.key_masked
+          : '已保存设置，但还没有 API Key';
+      })
+      .catch(function (err) {
+        status.className = 'essay-status error';
+        status.textContent = '保存失败：' + err.message;
+      });
+  }
+
+  function loadEssays() {
+    var list = $('essay-list');
+    var paper = $('essay-paper').value;
+    list.innerHTML = '<div class="practice-empty">正在读取大题…</div>';
+    fetch('/api/essays' + (paper ? '?page=' + encodeURIComponent(paper) : ''))
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+          return data;
+        });
+      })
+      .then(function (data) {
+        var sel = $('essay-paper');
+        var current = sel.value;
+        sel.innerHTML = '';
+        var all = document.createElement('option');
+        all.value = '';
+        all.textContent = '全部套卷';
+        sel.appendChild(all);
+        (data.papers || []).forEach(function (p) {
+          var opt = document.createElement('option');
+          opt.value = p.path;
+          opt.textContent = (p.title || p.path) + '（' + p.count + ' 题）';
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+
+        renderEssays(data.items || []);
+      })
+      .catch(function (err) {
+        list.innerHTML = '';
+        list.appendChild(el('div', 'practice-empty', '读取大题失败：' + err.message));
+      });
+  }
+
+  function renderEssays(items) {
+    var list = $('essay-list');
+    list.innerHTML = '';
+    if (!items.length) {
+      list.appendChild(el('div', 'practice-empty',
+        '题库里还没有解答题。请先在「重做」页选择套卷并点「更新题库」，或点本页的「更新题库」。'));
+      return;
+    }
+    items.forEach(function (item) {
+      list.appendChild(renderEssayCard(item));
+    });
+  }
+
+  function renderEssayHistory(box, history) {
+    box.innerHTML = '';
+    (history || []).forEach(function (h) {
+      var row = document.createElement('div');
+      row.textContent = (h.created_at || '') + ' · ' + fmtScore(h.score) + ' / ' +
+        fmtScore(h.total) + ' 分' + (h.comment ? ' · ' + h.comment.slice(0, 60) : '');
+      box.appendChild(row);
+    });
+  }
+
+  function renderEssayCard(item) {
+    var card = el('article', 'essay-card');
+
+    var head = el('div', 'essay-head');
+    head.appendChild(el('span', 'qnum', '第 ' + item.num + ' 题'));
+    head.appendChild(el('span', 'badge gray', fmtScore(item.points) + ' 分'));
+    head.appendChild(el('span', 'subject-meta',
+      (item.subject || '') + (item.page_title ? ' · ' + item.page_title : '')));
+    var tags = item.tags || [];
+    if (tags.length) head.appendChild(el('span', 'badge gray', tags.join(' · ')));
+    card.appendChild(head);
+
+    if (item.stem_html) {
+      var stem = el('div', 'essay-stem rich-inline');
+      stem.innerHTML = item.stem_html;
+      card.appendChild(stem);
+    } else {
+      card.appendChild(el('div', 'essay-stem', item.stem || ''));
+    }
+
+    var tools = el('div', 'essay-tools');
+    var refBtn = el('button', 'qbtn', '查看参考答案');
+    refBtn.type = 'button';
+    tools.appendChild(refBtn);
+    var best = null;
+    (item.history || []).forEach(function (h) {
+      var s = Number(h.score);
+      if (isFinite(s) && (best === null || s > best)) best = s;
+    });
+    if (best !== null) {
+      tools.appendChild(el('span', 'essay-status',
+        '历史最高 ' + fmtScore(best) + ' / ' + fmtScore(item.points) + ' 分'));
+    }
+    card.appendChild(tools);
+
+    var ref = el('div', 'essay-ref rich-inline');
+    ref.hidden = true;
+    ref.innerHTML = item.answer_html || '<span>暂无参考答案</span>';
+    card.appendChild(ref);
+    refBtn.addEventListener('click', function () {
+      ref.hidden = !ref.hidden;
+      refBtn.textContent = ref.hidden ? '查看参考答案' : '收起参考答案';
+    });
+
+    var input = el('textarea', 'essay-input');
+    input.placeholder = '按步骤写出你的作答，关键过程越具体，评分越准确…';
+    card.appendChild(input);
+
+    var row = el('div', 'essay-actions');
+    row.appendChild(el('span', 'essay-status', '满分'));
+    var totalInput = document.createElement('input');
+    totalInput.type = 'number';
+    totalInput.min = '1';
+    totalInput.max = '100';
+    totalInput.step = '1';
+    totalInput.className = 'essay-total';
+    totalInput.value = fmtScore(item.points);
+    row.appendChild(totalInput);
+    var btn = el('button', 'btn', 'AI 评分');
+    btn.type = 'button';
+    var status = el('span', 'essay-status', '');
+    row.appendChild(btn);
+    row.appendChild(status);
+    card.appendChild(row);
+
+    var resultBox = el('div', 'essay-result');
+    resultBox.hidden = true;
+    card.appendChild(resultBox);
+
+    var histBox = el('div', 'essay-history');
+    card.appendChild(histBox);
+    renderEssayHistory(histBox, item.history);
+
+    btn.addEventListener('click', function () {
+      var answer = input.value.trim();
+      if (!answer) {
+        status.className = 'essay-status error';
+        status.textContent = '请先写作答内容。';
+        return;
+      }
+      btn.disabled = true;
+      status.className = 'essay-status';
+      status.textContent = 'AI 评分中，请稍候…';
+      fetch('/api/essays/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, answer: answer, total: totalInput.value })
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+            return data;
+          });
+        })
+        .then(function (data) {
+          var r = data.result || {};
+          status.className = 'essay-status ok';
+          status.textContent = '已评分并保存。';
+          resultBox.hidden = false;
+          resultBox.innerHTML = '';
+          resultBox.appendChild(el('div', 'score',
+            fmtScore(r.score) + ' / ' + fmtScore(r.total) + ' 分'));
+          if (r.comment) resultBox.appendChild(el('div', 'comment', r.comment));
+          renderEssayHistory(histBox, data.history || []);
+        })
+        .catch(function (err) {
+          status.className = 'essay-status error';
+          status.textContent = err.message;
+          if (/API Key|Base URL|接口/.test(err.message)) {
+            $('ai-settings').open = true;
+          }
+        })
+        .finally(function () { btn.disabled = false; });
+    });
+
+    return card;
+  }
+
+  function refreshEssayBank() {
+    var btn = $('essay-update-bank');
+    var old = btn.textContent;
+    var paper = $('essay-paper').value;
+    btn.disabled = true;
+    btn.textContent = '正在抓取…';
+    fetch('/api/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pages: paper ? [paper] : [], refresh: true })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+          return data;
+        });
+      })
+      .then(function () {
+        toast('题库已更新。');
+        loadEssays();
+      })
+      .catch(function (err) { toast('更新失败：' + err.message); })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = old;
+      });
+  }
+
   var STATIC_MODE = false;
 
   // ---------- 管理：数据库 / 发布 ----------
@@ -2783,7 +3159,8 @@
     pages: '页面题库',
     reports: '历史报告',
     kps: '知识点收藏',
-    attempts: '练习记录'
+    attempts: '练习记录',
+    essay_answers: '大题评分'
   };
   var dbTable = 'pages';
   var dbCounts = {};
@@ -3205,7 +3582,7 @@
       .catch(bootStatic);
   }
 
-  var routes = ['import', 'report', 'practice', 'saved', 'manage'];
+  var routes = ['import', 'report', 'practice', 'essay', 'saved', 'manage'];
   var navLinks = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
 
   function routeName() {
@@ -3223,6 +3600,11 @@
     });
     if (name === 'report' && state.report) {
       renderReport(state.report.groups || []);
+    }
+    if (name === 'essay' && !STATIC_MODE && !essayInitialized) {
+      essayInitialized = true;
+      loadAiSettings();
+      loadEssays();
     }
     if (name === 'manage' && !STATIC_MODE) {
       loadDbOverview();
