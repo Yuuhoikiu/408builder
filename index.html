@@ -693,6 +693,27 @@
   .modal-body.rich p { margin: 0 0 12px; }
   .modal-body.rich p:last-child { margin-bottom: 0; }
   .modal-body.rich img { max-width: 100%; height: auto; }
+  .modal-body.rich svg,
+  .modal-body.rich img,
+  .modal-body.rich figure {
+    background: #fff;
+  }
+  .modal-body.rich svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 14px auto;
+    padding: 10px;
+    border: 1px solid var(--line-soft);
+    box-sizing: border-box;
+  }
+  .modal-body.rich img {
+    display: block;
+    margin: 14px auto;
+    padding: 8px;
+    border: 1px solid var(--line-soft);
+    box-sizing: border-box;
+  }
   .modal-body.rich .exp-figure {
     display: block;
     margin: 14px 0;
@@ -704,6 +725,31 @@
     height: auto;
     background: #fff;
   }
+  .rich-inline svg,
+  .rich-inline img {
+    background: #fff;
+    max-width: 100%;
+    height: auto;
+  }
+  .rich-inline svg {
+    padding: 6px;
+    border: 1px solid var(--line-soft);
+    box-sizing: border-box;
+    vertical-align: middle;
+  }
+  .rich-inline img {
+    padding: 4px;
+    border: 1px solid var(--line-soft);
+    box-sizing: border-box;
+  }
+  .rich-inline .exp-figure {
+    margin: 10px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  .pq-opt .rich-inline svg { max-height: 200px; width: auto; }
+  .pq-feedback .rich-inline img { max-height: 260px; }
+
   .modal-body.rich table {
     width: 100%;
     border-collapse: collapse;
@@ -1142,7 +1188,7 @@
       <p class="page-lead">按科目与知识点整理错题。数据优先来自本地数据库，只有缺失的页面才联网抓取。</p>
     </section>
 
-    <section class="card" id="section-report">
+    <section class="card local-only" id="section-report">
       <div class="row">
         <button class="btn local-only" id="generate" type="button" disabled>生成报告</button>
         <button class="btn ghost local-only" id="refetch" type="button" disabled>重新抓取</button>
@@ -1245,9 +1291,9 @@
           <label>仓库<input id="gh-repo" class="url-input" placeholder="Yuuhoikiu/408builder"></label>
           <label>分支<input id="gh-branch" class="url-input" placeholder="main"></label>
           <label>文件路径<input id="gh-path" class="url-input" placeholder="data.json"></label>
-          <label>访问令牌<input id="gh-token" class="url-input" type="password" placeholder="ghp_..."></label>
         </div>
-        <p class="hint">令牌仅保存在本机浏览器，需要该仓库 Contents 读写权限。同步会提交 data.json，GitHub Pages 会自动重建。</p>
+        <p class="hint" id="gh-account">正在检测本机 GitHub 登录状态…</p>
+        <p class="hint">同步使用本机已登录的 GitHub CLI，无需填写令牌；未登录时在终端执行 <code>gh auth login</code> 一次即可。</p>
       </details>
     </section>
 
@@ -1726,13 +1772,23 @@
       ));
       section.appendChild(title);
 
-      group.knowledges.forEach(function (kp) {
+      group.knowledges.slice().sort(function (a, b) {
+        function firstNum(kp) {
+          var nums = (kp.cards || []).map(function (card) {
+            return parseInt(card.num, 10) || 99999;
+          });
+          return nums.length ? Math.min.apply(null, nums) : 99999;
+        }
+        return firstNum(a) - firstNum(b);
+      }).forEach(function (kp) {
         var wrap = el('div', 'kp-sec');
         var kpHead = el('div', 'kp-head');
         kpHead.appendChild(el('span', 'kp-name', '知识点 · ' + kp.name));
         if (kp.link) kpHead.appendChild(linkEl('查看知识点讲解 ↗', kp.link, 'kp-link'));
         wrap.appendChild(kpHead);
-        kp.cards.forEach(function (card) {
+        kp.cards.slice().sort(function (a, b) {
+          return (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
+        }).forEach(function (card) {
           wrap.appendChild(renderCard(card, group.subject, kp.name));
         });
         section.appendChild(wrap);
@@ -2137,7 +2193,7 @@
         });
       });
       actions.appendChild(read);
-      actions.appendChild(del);
+      if (!STATIC_MODE) actions.appendChild(del);
       head.appendChild(actions);
       row.appendChild(head);
 
@@ -2395,9 +2451,22 @@
       });
   }
 
+  function sortQuestions(list) {
+    return list.slice().sort(function (a, b) {
+      var pa = a.page_path || '';
+      var pb = b.page_path || '';
+      if (pa !== pb) return pa < pb ? -1 : 1;
+      var na = parseInt(a.num, 10);
+      var nb = parseInt(b.num, 10);
+      if (isNaN(na)) na = 0;
+      if (isNaN(nb)) nb = 0;
+      return na - nb;
+    });
+  }
+
   function beginQuiz(list, label) {
     quiz = {
-      list: list,
+      list: sortQuestions(list),
       idx: 0,
       picked: [],
       checked: false,
@@ -2453,7 +2522,13 @@
       body.appendChild(hist);
     }
 
-    if (q.stem) body.appendChild(el('div', 'pq-stem', q.stem));
+    if (q.stem_html) {
+      var stemBox = el('div', 'pq-stem rich-inline');
+      stemBox.innerHTML = q.stem_html;
+      body.appendChild(stemBox);
+    } else if (q.stem) {
+      body.appendChild(el('div', 'pq-stem', q.stem));
+    }
 
     var opts = el('div', 'pq-opts');
     (q.options || []).forEach(function (opt) {
@@ -2463,7 +2538,13 @@
       var btn = el('button', 'pq-opt');
       btn.type = 'button';
       btn.appendChild(el('span', 'pq-label', opt.label || ''));
-      btn.appendChild(el('span', 'pq-text', opt.text || '（图片选项，请点原题查看）'));
+      if (opt.html) {
+        var richText = el('span', 'pq-text rich-inline');
+        richText.innerHTML = opt.html;
+        btn.appendChild(richText);
+      } else {
+        btn.appendChild(el('span', 'pq-text', opt.text || '（图片选项，请点原题查看）'));
+      }
       if (quiz.checked) {
         btn.disabled = true;
         if (correct) btn.classList.add('correct');
@@ -2491,7 +2572,12 @@
       fb.appendChild(el('div', null, ok
         ? '答对了'
         : '答错了 · 正确答案：' + ((q.answer || []).join('') || '—')));
-      if (q.explanation) {
+      if (q.explanation_html) {
+        var richExp = el('div', 'rich-inline');
+        richExp.style.marginTop = '8px';
+        richExp.innerHTML = q.explanation_html;
+        fb.appendChild(richExp);
+      } else if (q.explanation) {
         var exp = el('div', null, q.explanation);
         exp.style.marginTop = '6px';
         fb.appendChild(exp);
@@ -2792,10 +2878,12 @@
   }
 
   function ghLoad() {
-    var cfg = { repo: 'Yuuhoikiu/408builder', branch: 'main', path: 'data.json', token: '' };
+    var cfg = { repo: 'Yuuhoikiu/408builder', branch: 'main', path: 'data.json' };
     try {
       var saved = JSON.parse(localStorage.getItem(GH_KEY) || '{}');
-      Object.keys(saved).forEach(function (key) { cfg[key] = saved[key]; });
+      Object.keys(saved).forEach(function (key) {
+        if (key in cfg) cfg[key] = saved[key];
+      });
     } catch (err) { /* 忽略损坏的本地设置 */ }
     return cfg;
   }
@@ -2804,8 +2892,7 @@
     localStorage.setItem(GH_KEY, JSON.stringify({
       repo: $('gh-repo').value.trim() || 'Yuuhoikiu/408builder',
       branch: $('gh-branch').value.trim() || 'main',
-      path: $('gh-path').value.trim() || 'data.json',
-      token: $('gh-token').value.trim()
+      path: $('gh-path').value.trim() || 'data.json'
     }));
   }
 
@@ -2814,74 +2901,49 @@
     $('gh-repo').value = cfg.repo;
     $('gh-branch').value = cfg.branch;
     $('gh-path').value = cfg.path;
-    $('gh-token').value = cfg.token;
-    ['gh-repo', 'gh-branch', 'gh-path', 'gh-token'].forEach(function (id) {
+    ['gh-repo', 'gh-branch', 'gh-path'].forEach(function (id) {
       $(id).addEventListener('change', ghSave);
       $(id).addEventListener('blur', ghSave);
     });
+    loadGhStatus();
   }
 
-  function toBase64Utf8(text) {
-    var bytes = new TextEncoder().encode(text);
-    var bin = '';
-    var size = 0x8000;
-    for (var i = 0; i < bytes.length; i += size) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + size));
-    }
-    return btoa(bin);
+  function loadGhStatus() {
+    fetch('/api/github/status')
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        var box = $('gh-account');
+        if (data.authenticated) {
+          box.textContent = '已通过本机 GitHub CLI 认证：' + data.account + '（无需再次输入令牌）';
+        } else {
+          box.textContent = '未检测到 GitHub 登录，请在终端执行 gh auth login 后刷新本页。';
+        }
+      })
+      .catch(function () { $('gh-account').textContent = '无法检测 GitHub 登录状态。'; });
   }
 
   function syncToRepo() {
     ghSave();
     var cfg = ghLoad();
-    if (!cfg.token) {
-      manageStatus('请先在下方「GitHub 同步设置」填写访问令牌。', 'error');
-      return;
-    }
     var btn = $('sync-btn');
     btn.disabled = true;
-    manageStatus('正在打包本地数据…');
-    fetch('/api/export/bundle')
+    manageStatus('正在打包并提交到 ' + cfg.repo + '…');
+    fetch('/api/sync/github', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo: cfg.repo, branch: cfg.branch, path: cfg.path })
+    })
       .then(function (resp) { return resp.json(); })
-      .then(function (bundle) {
-        if (bundle.error) throw new Error(bundle.error);
-        var path = cfg.path.replace(/^\/+/, '');
-        var api = 'https://api.github.com/repos/' + cfg.repo + '/contents/' + path;
-        var headers = {
-          'Accept': 'application/vnd.github+json',
-          'Authorization': 'Bearer ' + cfg.token,
-          'X-GitHub-Api-Version': '2022-11-28'
-        };
-        manageStatus('正在提交到 ' + cfg.repo + '…');
-        return fetch(api + '?ref=' + encodeURIComponent(cfg.branch), { headers: headers })
-          .then(function (resp) { return resp.status === 200 ? resp.json() : null; })
-          .then(function (existing) {
-            var body = {
-              message: 'sync 408 data ' + new Date().toISOString(),
-              content: toBase64Utf8(JSON.stringify(bundle)),
-              branch: cfg.branch
-            };
-            if (existing && existing.sha) body.sha = existing.sha;
-            return fetch(api, { method: 'PUT', headers: headers, body: JSON.stringify(body) });
-          })
-          .then(function (resp) {
-            return resp.json().then(function (data) {
-              if (!resp.ok) throw new Error((data && data.message) || ('HTTP ' + resp.status));
-              return data;
-            });
-          });
-      })
       .then(function (data) {
-        var sha = (data.commit && data.commit.sha) || '';
+        if (data.error) throw new Error(data.error);
+        var result = data.result || {};
         manageStatus(
-          '已同步到 ' + ghLoad().repo + '（提交 ' + sha.slice(0, 7) +
-          '），GitHub Pages 稍后会自动更新。',
+          '已同步 ' + (result.files || []).join('、') + '（' + formatSize(result.size) +
+          '，提交 ' + String(result.commit || '').slice(0, 7) + '），GitHub Pages 稍后自动更新。',
           'ok'
         );
       })
-      .catch(function (err) {
-        manageStatus('同步失败：' + err.message, 'error');
-      })
+      .catch(function (err) { manageStatus('同步失败：' + err.message, 'error'); })
       .finally(function () { btn.disabled = false; });
   }
 
@@ -2979,13 +3041,19 @@
       subject: question.subject || '',
       page_path: path,
       stem: question.stem_text || question.stem || '',
+      stem_html: question.stem_html || '',
       options: (question.options || []).map(function (opt) {
-        return { label: opt.label, text: opt.plain || opt.text || '' };
+        return {
+          label: opt.label,
+          text: opt.plain || opt.text || '',
+          html: opt.html || ''
+        };
       }),
       answer: (question.answer || '').split('').sort(),
       multiple: !!question.multiple,
       tags: (question.tags || []).slice(1),
       explanation: question.explanation_text || '',
+      explanation_html: question.explanation_html || '',
       question_url: question.question_url || '',
       stats: {}
     };
@@ -3015,11 +3083,9 @@
       toast('静态数据里没有可练习的试卷。');
       return;
     }
-    var list = Object.keys(page.questions || {}).map(function (id) {
+    var list = sortQuestions(Object.keys(page.questions || {}).map(function (id) {
       return staticQuestion(page.questions[id], paper);
-    }).sort(function (a, b) {
-      return (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
-    });
+    }));
     if (!list.length) {
       toast('这份试卷没有题目。');
       return;
@@ -3050,9 +3116,19 @@
     });
   }
 
+  function setStaticCopy() {
+    document.querySelector('#view-report .page-lead').textContent =
+      '按科目与知识点整理错题，内容来自站点发布时的题库快照。';
+    document.querySelector('#view-practice .page-lead').textContent =
+      '按本次报告筛选题目：只做本次错过的，或按试卷全部重做。';
+    document.querySelector('#view-saved .page-lead').textContent =
+      '按套卷整理的知识点收藏，可阅读图文讲解，或输出一页纸复习。';
+  }
+
   function bootStatic() {
     STATIC_MODE = true;
     document.body.classList.add('static-mode');
+    setStaticCopy();
     routes = ['report', 'practice', 'saved'];
     fetch('data.json', { cache: 'no-store' })
       .then(function (resp) {
