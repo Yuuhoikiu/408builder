@@ -949,6 +949,25 @@
     border-top: 1px solid var(--line);
     background: var(--bg);
   }
+  .wrong-review { margin-top: 18px; }
+  .wrong-review-title { margin: 0 0 10px; font-size: 15px; }
+  .wrong-list { border-top: 1px solid var(--line-soft); }
+  .wrong-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .wrong-info {
+    display: flex;
+    align-items: center;
+    gap: 6px 12px;
+    flex-wrap: wrap;
+    margin-right: auto;
+  }
+  .wrong-info .pill { font-size: 12px; padding: 2px 9px; }
 
   /* 收藏 */
   .kp-item { padding: 18px 0; border-bottom: 1px solid var(--line-soft); }
@@ -3133,6 +3152,49 @@
     box.appendChild(rows);
     body.appendChild(box);
 
+    var wrong = quiz.list.filter(function (q) {
+      return !q.essay && !sameSet(quiz.picks[q.id] || [], q.answer || []);
+    });
+    var review = el('section', 'wrong-review');
+    review.appendChild(el('h3', 'wrong-review-title', '本次错题 ' + wrong.length + ' 道'));
+    if (wrong.length) {
+      var wrongList = el('div', 'wrong-list');
+      wrong.forEach(function (q) {
+        var selected = quiz.picks[q.id] || [];
+        var card = {
+          id: q.id,
+          num: q.num,
+          subject: q.subject || '',
+          selected: selected,
+          expected: q.answer || [],
+          stem: q.stem || '',
+          stem_html: q.stem_html || '',
+          options: q.options || [],
+          question_url: q.question_url || '',
+          explanation: q.explanation || '',
+          explanation_html: q.explanation_html || ''
+        };
+        var row = el('div', 'wrong-row');
+        var info = el('div', 'wrong-info');
+        info.appendChild(el('span', 'qnum', '第 ' + q.num + ' 题'));
+        info.appendChild(el('span', 'pq-meta',
+          (q.subject || '') + ' · ' + (selected.length ? '错误' : '未作答')));
+        info.appendChild(el('span', 'pill bad', '你答 ' + (selected.join('') || '未作答')));
+        info.appendChild(el('span', 'pill ok', '正确 ' + ((q.answer || []).join('') || '—')));
+        row.appendChild(info);
+        var view = el('button', 'qbtn primary', '快捷查看');
+        view.type = 'button';
+        view.addEventListener('click', function () { openWrongDetail(card); });
+        row.appendChild(view);
+        if (card.question_url) row.appendChild(linkEl('原题', card.question_url, 'qbtn'));
+        wrongList.appendChild(row);
+      });
+      review.appendChild(wrongList);
+    } else {
+      review.appendChild(el('div', 'pq-meta', '本次选择题全部答对。'));
+    }
+    body.appendChild(review);
+
     var actions = el('div', 'pq-actions');
     var again = el('button', 'btn', '再做一遍');
     again.type = 'button';
@@ -3155,6 +3217,68 @@
     back.addEventListener('click', function () { quiz = null; renderQuiz(); });
     actions.appendChild(back);
     body.appendChild(actions);
+  }
+
+  function openWrongDetail(card) {
+    $('modal-title').textContent = '第 ' + card.num + ' 题 · 错题回顾';
+    var body = $('modal-body');
+    body.className = 'modal-body rich';
+    body.innerHTML = '';
+
+    if (card.stem_html) {
+      var stem = el('div', 'qstem rich-inline');
+      stem.innerHTML = card.stem_html;
+      body.appendChild(stem);
+    } else if (card.stem) {
+      body.appendChild(el('div', 'qstem', card.stem));
+    }
+
+    var opts = el('div', 'opts');
+    (card.options || []).forEach(function (opt) {
+      var letter = letterOf(opt.label);
+      var correct = (card.expected || []).indexOf(letter) >= 0;
+      var mine = (card.selected || []).indexOf(letter) >= 0;
+      var row = el('div', 'opt' + (correct ? ' correct' : '') + (mine && !correct ? ' mine-wrong' : ''));
+      row.appendChild(el('span', 'optlabel', opt.label || ''));
+      if (opt.html) {
+        var optBox = el('span', 'opttext rich-inline');
+        optBox.innerHTML = opt.html;
+        row.appendChild(optBox);
+      } else {
+        row.appendChild(el('span', 'opttext', opt.text || '（图片选项，请点「查看原题」）'));
+      }
+      if (correct && mine) row.appendChild(el('span', 'mytag', '你的选择 · 正确'));
+      else if (correct) row.appendChild(el('span', 'mytag', '正确答案'));
+      else if (mine) row.appendChild(el('span', 'mytag', '你的选择'));
+      opts.appendChild(row);
+    });
+    if (opts.children.length) body.appendChild(opts);
+
+    var ans = el('div', 'ans-row');
+    ans.appendChild(el('span', 'pill bad',
+      '你的答案：' + ((card.selected || []).join('') || '未作答')));
+    ans.appendChild(el('span', 'pill ok',
+      '正确答案：' + ((card.expected || []).join('') || '—')));
+    body.appendChild(ans);
+
+    if (card.explanation_html) {
+      var exp = el('div', 'rich-inline');
+      exp.style.marginTop = '12px';
+      exp.innerHTML = card.explanation_html;
+      body.appendChild(exp);
+    } else if (card.explanation) {
+      var expText = el('div', null, card.explanation);
+      expText.style.marginTop = '12px';
+      body.appendChild(expText);
+    }
+
+    var foot = $('modal-foot');
+    foot.innerHTML = '';
+    if (card.question_url) {
+      foot.appendChild(linkEl('查看原题 ↗', card.question_url, 'qbtn primary'));
+    }
+    $('explain-modal').classList.add('show');
+    document.body.style.overflow = 'hidden';
   }
 
   function refreshBank() {
