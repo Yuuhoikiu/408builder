@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>408 错题知识点分析</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <style>
   :root {
     --bg: #f5f7fb;
@@ -751,6 +752,18 @@
   .opt .rich-inline { display: inline-flex; align-items: center; }
   .opt .rich-inline svg { max-height: 150px; width: auto; }
   .pq-feedback .rich-inline img { max-height: 260px; }
+  /* KaTeX 公式：复用官方样式，避免被图片通用样式影响 */
+  .rich-inline .katex { font-size: 1.15em; }
+  .rich-inline .katex svg,
+  .opt .rich-inline .katex svg,
+  .pq-opt .rich-inline .katex svg {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    max-height: none;
+    width: auto;
+    vertical-align: baseline;
+  }
 
   .modal-body.rich table {
     width: 100%;
