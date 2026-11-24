@@ -167,6 +167,16 @@
   .qbtn.primary:hover { background: #1d4ed8; }
   .qbtn.disabled { color: #c0c4cc; background: #f9fafb; cursor: not-allowed; }
   .qstem { margin: 12px 0 10px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+  .essay-report-comment {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-left: 3px solid var(--brand);
+    border-radius: 0 8px 8px 0;
+    background: #f8fafc;
+    font-size: 13px;
+    color: #374151;
+    white-space: pre-wrap;
+  }
   .opts { display: flex; flex-direction: column; gap: 6px; }
   .opt {
     display: flex; align-items: baseline; gap: 8px; padding: 7px 10px;
@@ -1900,7 +1910,10 @@
     var body = $('report-body');
     body.innerHTML = '';
     if (!groups || !groups.length) {
-      body.appendChild(el('div', 'empty', '没有需要分析的错题。'));
+      var hasEssays = state.report && (state.report.essays || []).length;
+      if (!hasEssays) {
+        body.appendChild(el('div', 'empty', '没有需要分析的错题。'));
+      }
       return;
     }
     groups.forEach(function (group) {
@@ -1937,6 +1950,62 @@
       });
       body.appendChild(section);
     });
+  }
+
+  function renderEssayReport(paper) {
+    var report = state.report;
+    if (!report) return;
+    var items = (report.essays || []).filter(function (it) {
+      return !paper || it.page_path === paper;
+    });
+    if (!items.length) return;
+
+    var body = $('report-body');
+    var section = el('section', 'subject-sec');
+    var title = el('h3', 'subject-title');
+    title.appendChild(document.createTextNode('大题评分'));
+    var full = items.filter(function (it) {
+      return Number(it.score) >= Number(it.points);
+    }).length;
+    title.appendChild(el('span', 'subject-meta',
+      '已评 ' + items.length + ' 道 · 满分 ' + full + ' 道'));
+    section.appendChild(title);
+
+    items.forEach(function (it) {
+      var card = el('div', 'qcard');
+
+      var head = el('div', 'qhead');
+      var left = el('div', 'qhead-left');
+      left.appendChild(el('span', 'qnum', '第 ' + it.num + ' 题'));
+      left.appendChild(el('span',
+        'badge' + (Number(it.score) >= Number(it.points) ? '' : ' gray'),
+        fmtScore(it.score) + ' / ' + fmtScore(it.points) + ' 分'));
+      if (it.subject) left.appendChild(el('span', 'badge gray', it.subject));
+      head.appendChild(left);
+
+      var actions = el('div', 'qactions');
+      if (it.page_url) actions.appendChild(linkEl('原题 ↗', it.page_url, 'qbtn'));
+      head.appendChild(actions);
+      card.appendChild(head);
+
+      var meta = el('div', 'ans-row');
+      meta.appendChild(el('span', 'pill ok', '最近 ' + fmtScore(it.score) + ' 分'));
+      meta.appendChild(el('span', 'pill', '最佳 ' + fmtScore(it.best) + ' 分'));
+      meta.appendChild(el('span', 'pill', '已评 ' + (it.attempts || 1) + ' 次'));
+      if (it.created_at) meta.appendChild(el('span', 'pill', it.created_at));
+      card.appendChild(meta);
+
+      if (it.stem) {
+        card.appendChild(el('div', 'qstem',
+          it.stem + (it.stem.length >= 160 ? '…' : '')));
+      }
+      if (it.comment) {
+        card.appendChild(el('div', 'essay-report-comment', it.comment));
+      }
+      section.appendChild(card);
+    });
+
+    body.appendChild(section);
   }
 
   function applyStats(stats) {
@@ -2030,14 +2099,19 @@
 
     applyStats(entry || report.stats || {});
     renderReport(filterGroups(report.groups || [], paper));
+    renderEssayReport(paper);
     renderPaperChips(papers);
 
     var stats = entry || report.stats || {};
     var count = (stats.wrong || 0) + (stats.unanswered || 0);
+    var essayCount = (report.essays || []).filter(function (it) {
+      return !paper || it.page_path === paper;
+    }).length;
     var label = paperInfo ? (paperInfo.title || paperInfo.path) : '全部试卷';
     var meta = label
       + ' · 生成时间 ' + (report.generated_at || '')
-      + ' · 共 ' + count + ' 道需复习的题';
+      + ' · 共 ' + count + ' 道需复习的题'
+      + (essayCount ? ' · 已评大题 ' + essayCount + ' 道' : '');
     if (state.fromDb) meta += ' · 来自本地数据库';
     $('result-meta').textContent = meta;
   }
