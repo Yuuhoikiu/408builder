@@ -748,6 +748,8 @@
     overflow-x: auto;
   }
   .pq-opt .rich-inline svg { max-height: 200px; width: auto; }
+  .opt .rich-inline { display: inline-flex; align-items: center; }
+  .opt .rich-inline svg { max-height: 150px; width: auto; }
   .pq-feedback .rich-inline img { max-height: 260px; }
 
   .modal-body.rich table {
@@ -1675,7 +1677,13 @@
     head.appendChild(actions);
     article.appendChild(head);
 
-    if (card.stem) article.appendChild(el('div', 'qstem', card.stem));
+    if (card.stem_html) {
+      var stemBox = el('div', 'qstem rich-inline');
+      stemBox.innerHTML = card.stem_html;
+      article.appendChild(stemBox);
+    } else if (card.stem) {
+      article.appendChild(el('div', 'qstem', card.stem));
+    }
 
     var opts = el('div', 'opts');
     (card.options || []).forEach(function (opt) {
@@ -1684,7 +1692,13 @@
       var mine = (card.selected || []).indexOf(letter) >= 0;
       var row = el('div', 'opt' + (correct ? ' correct' : '') + (mine && !correct ? ' mine-wrong' : ''));
       row.appendChild(el('span', 'optlabel', opt.label || ''));
-      row.appendChild(el('span', 'opttext', opt.text || '（图片选项，请点「原题」查看）'));
+      if (opt.html) {
+        var optBox = el('span', 'opttext rich-inline');
+        optBox.innerHTML = opt.html;
+        row.appendChild(optBox);
+      } else {
+        row.appendChild(el('span', 'opttext', opt.text || '（图片选项，请点「原题」查看）'));
+      }
       if (correct && mine) {
         row.appendChild(el('span', 'mytag', '你的选择 · 正确'));
       } else if (correct) {
