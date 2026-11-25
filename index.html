@@ -2247,6 +2247,13 @@
       }
     }
     if (scoreParts.length) meta += ' · ' + scoreParts.join(' · ');
+    var extraStats = report.stats || {};
+    if (extraStats.first_correct !== undefined) {
+      meta += ' · 首次做对 ' + (extraStats.first_correct || 0) + ' 题';
+    }
+    if (extraStats.second_correct !== undefined) {
+      meta += ' · 错后做对 ' + (extraStats.second_correct || 0) + ' 题';
+    }
     if (state.fromDb) meta += ' · 来自本地数据库';
     $('result-meta').textContent = meta;
   }
@@ -2929,6 +2936,9 @@
     var unanswered = 0;
     var essayQuestions = 0;
     var essayTotal = 0;
+    var firstCorrect = 0;
+    var secondCorrect = 0;
+    var repeatWrong = 0;
     var pages = [];
     quiz.list.forEach(function (q) {
       if (q.page_path && pages.indexOf(q.page_path) < 0) pages.push(q.page_path);
@@ -2944,6 +2954,15 @@
       if (!picked.length) unanswered += 1;
       var ok = sameSet(picked, q.answer || []);
       if (ok) correct += 1;
+      var before = q.stats || {};
+      var prevWrong = Number(before.wrong) || 0;
+      var prevRight = Number(before.right) || 0;
+      if (ok) {
+        if (prevWrong > 0) secondCorrect += 1;
+        else if (prevRight === 0) firstCorrect += 1;
+      } else if (picked.length && prevWrong > 0) {
+        repeatWrong += 1;
+      }
       items.push({
         id: q.id,
         page_path: q.page_path || '',
@@ -2970,7 +2989,10 @@
       choice_total: choices * 2,
       essay_count: essayQuestions,
       essay_answered: drafts.length,
-      essay_total: essayTotal
+      essay_total: essayTotal,
+      first_correct: firstCorrect,
+      second_correct: secondCorrect,
+      repeat_wrong: repeatWrong
     };
     var finish = function () {
       quiz.done = true;
@@ -2982,6 +3004,9 @@
         essays: drafts.length,
         essayCount: essayQuestions,
         essayTotal: essayTotal,
+        firstCorrect: firstCorrect,
+        secondCorrect: secondCorrect,
+        repeatWrong: repeatWrong,
         unanswered: unanswered,
         elapsed: quiz.exam
           ? quiz.examMinutes * 60000 - (quiz.deadline - Date.now())
@@ -3012,7 +3037,12 @@
       }).then(function (resp) { return resp.json(); })
     ])
       .then(function (results) {
-        if (results[0] && results[0].stats) state.attemptStats = results[0].stats;
+        if (results[0] && results[0].stats) {
+          state.attemptStats = results[0].stats;
+          quiz.list.forEach(function (q) {
+            if (!q.essay && results[0].stats[q.id]) q.stats = results[0].stats[q.id];
+          });
+        }
         finish();
       })
       .catch(function () {
@@ -3176,6 +3206,9 @@
     grid.appendChild(ovItem('答错',
       ((r.choices || 0) - (r.correct || 0) - (r.unanswered || 0)) + ' 题'));
     grid.appendChild(ovItem('未作答', (r.unanswered || 0) + ' 题'));
+    grid.appendChild(ovItem('第一次做对', (r.firstCorrect || 0) + ' 题'));
+    grid.appendChild(ovItem('第二次做对', (r.secondCorrect || 0) + ' 题（错后）'));
+    grid.appendChild(ovItem('重复做错', (r.repeatWrong || 0) + ' 题'));
     grid.appendChild(ovItem('大题', r.essayCount
       ? ((r.essays || 0) + ' / ' + r.essayCount + ' 道 · 0 / ' + (r.essayTotal || 0) + ' 分')
       : '—'));
