@@ -968,6 +968,26 @@
     margin-right: auto;
   }
   .wrong-info .pill { font-size: 12px; padding: 2px 9px; }
+  .quiz-overview { margin-top: 18px; }
+  .overview-title { margin: 0 0 10px; font-size: 15px; }
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .ov-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: var(--paper);
+  }
+  .ov-label { font-size: 12px; color: var(--muted); }
+  .ov-value { font-size: 15px; }
+  .overview-subjects { padding-bottom: 4px; font-size: 13px; color: var(--muted); }
 
   /* 收藏 */
   .kp-item { padding: 18px 0; border-bottom: 1px solid var(--line-soft); }
@@ -2736,9 +2756,16 @@
       .catch(function () {});
   }
 
+  function selectedPaperTitle() {
+    var sel = $('bank-paper');
+    if (!sel || !sel.options[sel.selectedIndex]) return '';
+    return sel.options[sel.selectedIndex].textContent.replace(/（[^）]*题）$/, '');
+  }
+
   function startQuiz(mode) {
     if (STATIC_MODE) { startStaticQuiz(mode); return; }
     var paper = $('bank-paper').value;
+    var paperTitle = selectedPaperTitle();
     if (mode === 'wrong') {
       var list = buildWrongQuiz();
       if (paper) {
@@ -2748,7 +2775,7 @@
         toast('这个范围里还没有错题，请先导入数据并生成报告。');
         return;
       }
-      beginQuiz(list, '只做错题');
+      beginQuiz(list, '只做错题', { paper: paperTitle });
       return;
     }
 
@@ -2773,7 +2800,7 @@
           return;
         }
         if (data.stats) state.attemptStats = data.stats;
-        beginQuiz(data.questions, filterLabel(mode));
+        beginQuiz(data.questions, filterLabel(mode), { paper: paperTitle });
       })
       .catch(function (err) { toast('读取题库失败：' + err.message); })
       .finally(function () {
@@ -2804,6 +2831,7 @@
       essayAnswers: {},
       done: false,
       label: label,
+      paper: opts.paper || '',
       exam: !!opts.exam,
       examMinutes: opts.minutes || 180,
       deadline: 0,
@@ -2882,7 +2910,8 @@
           toast('这份套卷没有题目，请先更新题库。');
           return;
         }
-        beginQuiz(list, '整套卷考试', { exam: true, minutes: 180 });
+        var title = selectedPaperTitle() || '整套卷考试';
+        beginQuiz(list, title, { exam: true, minutes: 180, paper: title });
       })
       .catch(function (err) { toast('读取题库失败：' + err.message); })
       .finally(function () {
@@ -3130,27 +3159,43 @@
     box.appendChild(el('div', 'pq-progress', quiz.label + ' · 已交卷'));
     box.appendChild(el('div', 'score', (r.score || 0) + ' / ' + (r.total || 0)));
     box.appendChild(el('div', 'pq-meta', '选择题得分（每题 2 分）'));
-
-    var rows = el('div', 'summary-line');
-    var choiceText = el('span', null,
-      '选择题 答对 ' + (r.correct || 0) + ' / ' + (r.choices || 0) + ' 题');
-    if (r.unanswered) {
-      choiceText.appendChild(el('b', null, '（' + r.unanswered + ' 题未作答）'));
-    }
-    rows.appendChild(choiceText);
-    if (r.essayCount) {
-      rows.appendChild(el('span', null,
-        '大题 已存档 ' + (r.essays || 0) + ' 道 · 满分 ' + (r.essayTotal || 0) +
-        ' 分（去大题页 AI 评分后计入报告）'));
-    }
-    if (quiz.exam) {
-      var used = clockText(r.elapsed || 0);
-      rows.appendChild(el('span', null,
-        '用时 ' + used + (r.elapsed > quiz.examMinutes * 60000 ? '（超时）' : '')));
-    }
-    if (!STATIC_MODE) rows.appendChild(el('span', null, '本次成绩已写入历史报告'));
-    box.appendChild(rows);
     body.appendChild(box);
+
+    var overview = el('section', 'quiz-overview');
+    overview.appendChild(el('h3', 'overview-title', '总览'));
+    var grid = el('div', 'overview-grid');
+    var ovItem = function (label, value) {
+      var item = el('div', 'ov-item');
+      item.appendChild(el('span', 'ov-label', label));
+      item.appendChild(el('b', 'ov-value', value));
+      return item;
+    };
+    grid.appendChild(ovItem('套卷年份', quiz.paper || '全部试卷'));
+    grid.appendChild(ovItem('选择题得分', (r.score || 0) + ' / ' + (r.total || 0)));
+    grid.appendChild(ovItem('答对', (r.correct || 0) + ' / ' + (r.choices || 0) + ' 题'));
+    grid.appendChild(ovItem('答错',
+      ((r.choices || 0) - (r.correct || 0) - (r.unanswered || 0)) + ' 题'));
+    grid.appendChild(ovItem('未作答', (r.unanswered || 0) + ' 题'));
+    grid.appendChild(ovItem('大题', r.essayCount
+      ? ((r.essays || 0) + ' / ' + r.essayCount + ' 道 · 0 / ' + (r.essayTotal || 0) + ' 分')
+      : '—'));
+    grid.appendChild(ovItem('用时', quiz.exam ? clockText(r.elapsed || 0) : '—'));
+    overview.appendChild(grid);
+
+    var subjects = {};
+    quiz.list.forEach(function (q) {
+      if (q.essay) return;
+      var name = q.subject || '其他';
+      if (!subjects[name]) subjects[name] = { total: 0, wrong: 0 };
+      subjects[name].total += 1;
+      if (!sameSet(quiz.picks[q.id] || [], q.answer || [])) subjects[name].wrong += 1;
+    });
+    var subjectText = Object.keys(subjects).map(function (name) {
+      return name + ' 错 ' + subjects[name].wrong + '/' + subjects[name].total;
+    }).join(' · ');
+    if (subjectText) overview.appendChild(el('div', 'overview-subjects', subjectText));
+    if (!STATIC_MODE) overview.appendChild(el('div', 'pq-meta', '本次成绩已写入历史报告'));
+    body.appendChild(overview);
 
     var wrong = quiz.list.filter(function (q) {
       return !q.essay && !sameSet(quiz.picks[q.id] || [], q.answer || []);
@@ -3199,8 +3244,12 @@
     var again = el('button', 'btn', '再做一遍');
     again.type = 'button';
     again.addEventListener('click', function () {
-      beginQuiz(quiz.list, quiz.label,
-        quiz.exam ? { exam: true, minutes: quiz.examMinutes } : undefined);
+      var opts = { paper: quiz.paper };
+      if (quiz.exam) {
+        opts.exam = true;
+        opts.minutes = quiz.examMinutes;
+      }
+      beginQuiz(quiz.list, quiz.label, opts);
     });
     actions.appendChild(again);
     if (r.essayCount) {
