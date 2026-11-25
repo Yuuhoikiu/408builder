@@ -1407,6 +1407,11 @@
         <div class="stat"><div class="k">未作答</div><div class="v" id="stat-unanswered">0</div></div>
         <div class="stat ok"><div class="k">正确率</div><div class="v" id="stat-accuracy">0%</div></div>
       </div>
+      <section class="quiz-overview" id="report-overview" hidden>
+        <h3 class="overview-title">总览</h3>
+        <div class="overview-grid" id="report-overview-grid"></div>
+        <div class="overview-subjects" id="report-overview-subjects"></div>
+      </section>
       <div class="warnings" id="warnings"></div>
       <div class="result-bar">
         <span class="meta" id="result-meta"></span>
@@ -2256,6 +2261,55 @@
     }
     if (state.fromDb) meta += ' · 来自本地数据库';
     $('result-meta').textContent = meta;
+    renderReportOverview(report, entry, paperInfo);
+  }
+
+  function renderReportOverview(report, entry, paperInfo) {
+    var stats = entry || report.stats || {};
+    var global = report.stats || {};
+    var total = Number(stats.total) || 0;
+    var correct = Number(stats.correct) || 0;
+    var wrong = Number(stats.wrong) || 0;
+    var unanswered = Number(stats.unanswered) || 0;
+    var choiceScore = entry ? correct * 2 : Number(stats.choice_score);
+    var choiceTotal = entry
+      ? (Number(stats.answered) || 0) * 2
+      : Number(stats.choice_total);
+    if (!isFinite(choiceScore)) choiceScore = correct * 2;
+    if (!isFinite(choiceTotal)) choiceTotal = 0;
+
+    $('report-overview').hidden = false;
+    var grid = $('report-overview-grid');
+    grid.innerHTML = '';
+    var item = function (label, value) {
+      var cell = el('div', 'ov-item');
+      cell.appendChild(el('span', 'ov-label', label));
+      cell.appendChild(el('b', 'ov-value', value));
+      grid.appendChild(cell);
+    };
+    item('套卷年份', paperInfo ? (paperInfo.title || paperInfo.path) : '全部试卷');
+    item('选择题得分', fmtScore(choiceScore) + ' / ' + fmtScore(choiceTotal));
+    item('答对', correct + ' / ' + total + ' 题');
+    item('答错', wrong + ' 题');
+    item('未作答', unanswered + ' 题');
+    item('第一次做对', global.first_correct !== undefined
+      ? (global.first_correct || 0) + ' 题' : '—');
+    item('第二次做对', global.second_correct !== undefined
+      ? (global.second_correct || 0) + ' 题（错后）' : '—');
+    item('重复做错', global.repeat_wrong !== undefined
+      ? (global.repeat_wrong || 0) + ' 题' : '—');
+
+    var parts = [];
+    (report.groups || []).forEach(function (group) {
+      var n = 0;
+      (group.knowledges || []).forEach(function (kp) {
+        n += (kp.cards || []).length;
+      });
+      if (n) parts.push((group.subject || '其他') + ' 错 ' + n);
+    });
+    var subj = $('report-overview-subjects');
+    subj.textContent = parts.join(' · ');
+    subj.hidden = !parts.length;
   }
 
   function showResult(data, options) {
