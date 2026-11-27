@@ -951,10 +951,31 @@
   .exam-summary .score { font-size: 52px; }
   .quiz-sheet { display: flex; flex-direction: column; }
   .quiz-q {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
     padding: 22px 0;
     border-bottom: 1px solid var(--line-soft);
   }
   .quiz-q:last-child { border-bottom: 0; }
+  .quiz-main { flex: 1; min-width: 0; }
+  .quiz-note { flex: 0 0 220px; position: sticky; top: 84px; }
+  .quiz-note-head {
+    margin-bottom: 6px; font-size: 12px; font-weight: 700;
+    letter-spacing: .5px; color: var(--muted);
+  }
+  .quiz-note-input {
+    width: 100%; min-height: 120px; resize: vertical;
+    padding: 8px 10px; border: 1px dashed #cbd5e1; border-radius: 8px;
+    background: #fffdf5; color: #374151; font-size: 12.5px; line-height: 1.6;
+    font-family: inherit; outline: none;
+  }
+  .quiz-note-input:focus { border-color: var(--warn); background: #fff; }
+  @media (max-width: 860px) {
+    .quiz-q { flex-direction: column; }
+    .quiz-note { position: static; flex: none; width: 100%; }
+    .quiz-note-input { min-height: 80px; }
+  }
   .quiz-q .pq-stem { margin-top: 10px; font-size: 16.5px; }
   .quiz-q .essay-input { margin-top: 10px; }
   .sheet-foot {
@@ -3343,6 +3364,10 @@
     bar.appendChild(el('span', 'pq-meta',
       '共 ' + quiz.list.length + ' 题 · 选择题 ' + choiceCount + ' 道' +
       (essayCount ? ' · 大题 ' + essayCount + ' 道（' + essayTotal + ' 分）' : '')));
+    var exportBtn = el('button', 'btn ghost exam-notes-export', '导出笔记');
+    exportBtn.type = 'button';
+    exportBtn.addEventListener('click', exportNotesMarkdown);
+    bar.appendChild(exportBtn);
     var finishBtn = el('button', 'btn exam-finish', '交卷判分');
     finishBtn.type = 'button';
     finishBtn.addEventListener('click', submitExam);
@@ -3364,8 +3389,84 @@
     body.appendChild(foot);
   }
 
+  var NOTES_KEY = 'foreverago-notes-v1';
+
+  function loadNotes() {
+    try {
+      return JSON.parse(localStorage.getItem(NOTES_KEY) || '{}') || {};
+    } catch (err) {
+      return {};
+    }
+  }
+
+  function getQuestionNote(id) {
+    var all = loadNotes();
+    return (all[id] && all[id].note) || '';
+  }
+
+  function saveQuestionNote(q, text) {
+    var all = loadNotes();
+    if (!text.trim()) {
+      delete all[q.id];
+    } else {
+      all[q.id] = {
+        id: q.id,
+        num: q.num || '',
+        subject: q.subject || '',
+        paper: quiz && quiz.paper ? quiz.paper : '',
+        page_path: q.page_path || '',
+        stem: (q.stem || '').replace(/\s+/g, ' ').slice(0, 120),
+        note: text,
+        updated_at: new Date().toISOString()
+      };
+    }
+    try {
+      localStorage.setItem(NOTES_KEY, JSON.stringify(all));
+    } catch (err) {
+      toast('笔记保存失败：浏览器存储空间不足。');
+    }
+  }
+
+  function exportNotesMarkdown() {
+    var all = loadNotes();
+    var list = Object.keys(all).map(function (key) { return all[key]; })
+      .filter(function (item) { return item && item.note && item.note.trim(); });
+    if (!list.length) {
+      toast('还没有笔记，先在题目右侧记几条吧。');
+      return;
+    }
+    var byPaper = {};
+    list.forEach(function (item) {
+      var paper = item.paper || '未标注套卷';
+      if (!byPaper[paper]) byPaper[paper] = [];
+      byPaper[paper].push(item);
+    });
+    var lines = ['# 408 复习笔记', '', '导出时间：' + new Date().toLocaleString(), ''];
+    Object.keys(byPaper).sort().forEach(function (paper) {
+      lines.push('## ' + paper, '');
+      byPaper[paper].sort(function (a, b) {
+        return (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
+      }).forEach(function (item) {
+        lines.push('### 第 ' + (item.num || '?') + ' 题' +
+          (item.subject ? ' · ' + item.subject : ''));
+        if (item.stem) lines.push('> ' + item.stem);
+        lines.push('', item.note.trim(), '');
+      });
+    });
+    var blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = '408笔记-' + new Date().toISOString().slice(0, 10) + '.md';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+    toast('已导出 ' + list.length + ' 条笔记。');
+  }
+
   function renderSheetQuestion(q, index) {
     var card = el('section', 'quiz-q');
+    var main = el('div', 'quiz-main');
     var head = el('div', 'pq-head');
     var left = el('div');
     left.appendChild(el('span', 'pq-num', '第 ' + (q.num || (index + 1)) + ' 题'));
@@ -3378,14 +3479,14 @@
       head.appendChild(el('span', 'pq-progress',
         '错 ' + (s.wrong || 0) + ' · 对 ' + (s.right || 0)));
     }
-    card.appendChild(head);
+    main.appendChild(head);
 
     if (q.stem_html) {
       var stem = el('div', 'pq-stem rich-inline');
       stem.innerHTML = q.stem_html;
-      card.appendChild(stem);
+      main.appendChild(stem);
     } else if (q.stem) {
-      card.appendChild(el('div', 'pq-stem', q.stem));
+      main.appendChild(el('div', 'pq-stem', q.stem));
     }
 
     if (q.essay) {
@@ -3393,8 +3494,8 @@
       ta.placeholder = '在本地作答（原网页没有大题填写功能），交卷后会保存，可到大题页让 AI 评分…';
       ta.value = quiz.essayAnswers[q.id] || q.draft || '';
       ta.addEventListener('input', function () { quiz.essayAnswers[q.id] = ta.value; });
-      card.appendChild(ta);
-      if (q.points) card.appendChild(el('div', 'pq-meta', '满分 ' + q.points + ' 分'));
+      main.appendChild(ta);
+      if (q.points) main.appendChild(el('div', 'pq-meta', '满分 ' + q.points + ' 分'));
     } else {
       var picked = quiz.picks[q.id] || [];
       var opts = el('div', 'pq-opts');
@@ -3427,10 +3528,24 @@
         });
         opts.appendChild(btn);
       });
-      card.appendChild(opts);
+      main.appendChild(opts);
     }
 
-    if (q.question_url) card.appendChild(linkEl('原题 ↗', q.question_url, 'qbtn'));
+    if (q.question_url) main.appendChild(linkEl('原题 ↗', q.question_url, 'qbtn'));
+
+    var note = el('div', 'quiz-note');
+    note.appendChild(el('div', 'quiz-note-head', '笔记'));
+    var noteInput = document.createElement('textarea');
+    noteInput.className = 'quiz-note-input';
+    noteInput.placeholder = '记下思路、易错点…';
+    noteInput.value = getQuestionNote(q.id);
+    noteInput.addEventListener('input', function () {
+      saveQuestionNote(q, noteInput.value);
+    });
+    note.appendChild(noteInput);
+
+    card.appendChild(main);
+    card.appendChild(note);
     return card;
   }
 
@@ -3560,6 +3675,10 @@
       });
       actions.appendChild(essayBtn);
     }
+    var notesBtn = el('button', 'btn ghost', '导出笔记');
+    notesBtn.type = 'button';
+    notesBtn.addEventListener('click', exportNotesMarkdown);
+    actions.appendChild(notesBtn);
     var back = el('button', 'btn ghost', '返回');
     back.type = 'button';
     back.addEventListener('click', function () { quiz = null; renderQuiz(); });
