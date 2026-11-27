@@ -167,6 +167,23 @@
   .qbtn.primary:hover { background: #1d4ed8; }
   .qbtn.disabled { color: #c0c4cc; background: #f9fafb; cursor: not-allowed; }
   .qstem { margin: 12px 0 10px; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+  .essay-paper {
+    margin: 18px 0 10px; padding-left: 8px;
+    border-left: 3px solid var(--accent);
+    font-size: 13px; font-weight: 700; color: var(--accent);
+  }
+  .essay-answer {
+    margin-top: 8px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fcfcfd;
+  }
+  .essay-answer summary {
+    padding: 8px 12px; cursor: pointer; font-size: 12.5px;
+    color: var(--muted); user-select: none;
+  }
+  .essay-answer-text {
+    padding: 0 12px 12px; white-space: pre-wrap; font-size: 13px;
+    color: #374151; line-height: 1.7;
+  }
   .essay-report-comment {
     margin-top: 8px;
     padding: 10px 12px;
@@ -2091,38 +2108,64 @@
       '已评 ' + items.length + ' 道 · 满分 ' + full + ' 道'));
     section.appendChild(title);
 
+    var groups = [];
+    var groupMap = {};
     items.forEach(function (it) {
-      var card = el('div', 'qcard');
-
-      var head = el('div', 'qhead');
-      var left = el('div', 'qhead-left');
-      left.appendChild(el('span', 'qnum', '第 ' + it.num + ' 题'));
-      left.appendChild(el('span',
-        'badge' + (Number(it.score) >= Number(it.points) ? '' : ' gray'),
-        fmtScore(it.score) + ' / ' + fmtScore(it.points) + ' 分'));
-      if (it.subject) left.appendChild(el('span', 'badge gray', it.subject));
-      head.appendChild(left);
-
-      var actions = el('div', 'qactions');
-      if (it.page_url) actions.appendChild(linkEl('原题 ↗', it.page_url, 'qbtn'));
-      head.appendChild(actions);
-      card.appendChild(head);
-
-      var meta = el('div', 'ans-row');
-      meta.appendChild(el('span', 'pill ok', '最近 ' + fmtScore(it.score) + ' 分'));
-      meta.appendChild(el('span', 'pill', '最佳 ' + fmtScore(it.best) + ' 分'));
-      meta.appendChild(el('span', 'pill', '已评 ' + (it.attempts || 1) + ' 次'));
-      if (it.created_at) meta.appendChild(el('span', 'pill', it.created_at));
-      card.appendChild(meta);
-
-      if (it.stem) {
-        card.appendChild(el('div', 'qstem',
-          it.stem + (it.stem.length >= 160 ? '…' : '')));
+      var key = it.page_path || '';
+      if (!groupMap[key]) {
+        groupMap[key] = {
+          title: it.page_title || key || '未知套卷',
+          items: []
+        };
+        groups.push(groupMap[key]);
       }
-      if (it.comment) {
-        card.appendChild(el('div', 'essay-report-comment', it.comment));
-      }
-      section.appendChild(card);
+      groupMap[key].items.push(it);
+    });
+
+    groups.forEach(function (group) {
+      section.appendChild(el('div', 'essay-paper', group.title));
+      group.items.forEach(function (it) {
+        var card = el('div', 'qcard');
+
+        var head = el('div', 'qhead');
+        var left = el('div', 'qhead-left');
+        left.appendChild(el('span', 'qnum', '第 ' + it.num + ' 题'));
+        left.appendChild(el('span',
+          'badge' + (Number(it.score) >= Number(it.points) ? '' : ' gray'),
+          fmtScore(it.score) + ' / ' + fmtScore(it.points) + ' 分'));
+        if (it.subject) left.appendChild(el('span', 'badge gray', it.subject));
+        head.appendChild(left);
+
+        var actions = el('div', 'qactions');
+        if (it.page_url) actions.appendChild(linkEl('原题 ↗', it.page_url, 'qbtn'));
+        head.appendChild(actions);
+        card.appendChild(head);
+
+        var meta = el('div', 'ans-row');
+        meta.appendChild(el('span', 'pill ok', '最近 ' + fmtScore(it.score) + ' 分'));
+        meta.appendChild(el('span', 'pill', '最佳 ' + fmtScore(it.best) + ' 分'));
+        meta.appendChild(el('span', 'pill', '已评 ' + (it.attempts || 1) + ' 次'));
+        if (it.created_at) meta.appendChild(el('span', 'pill', it.created_at));
+        card.appendChild(meta);
+
+        if (it.stem) {
+          card.appendChild(el('div', 'qstem',
+            it.stem + (it.stem.length >= 160 ? '…' : '')));
+        }
+        if (it.answer) {
+          var det = document.createElement('details');
+          det.className = 'essay-answer';
+          var sum = document.createElement('summary');
+          sum.textContent = '我的作答';
+          det.appendChild(sum);
+          det.appendChild(el('div', 'essay-answer-text', it.answer));
+          card.appendChild(det);
+        }
+        if (it.comment) {
+          card.appendChild(el('div', 'essay-report-comment', it.comment));
+        }
+        section.appendChild(card);
+      });
     });
 
     body.appendChild(section);
