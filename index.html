@@ -1058,6 +1058,26 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  .notes-paper {
+    margin: 18px 0 8px; padding-left: 8px;
+    border-left: 3px solid var(--accent);
+    font-size: 13px; font-weight: 700; color: var(--accent);
+  }
+  .note-card {
+    padding: 14px 0; border-bottom: 1px solid var(--line-soft);
+  }
+  .note-card:last-child { border-bottom: 0; }
+  .note-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .note-stem {
+    margin-top: 6px; color: var(--muted); font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .note-body {
+    margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+    background: #fffdf5; border: 1px solid #f1e6c8;
+    font-size: 13.5px; line-height: 1.7; white-space: pre-wrap; color: #374151;
+  }
+  .note-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
 
   .toast {
     position: fixed;
@@ -1549,8 +1569,23 @@
   <div class="view" id="view-saved">
     <section class="page-intro">
       <div class="page-kicker">05 / SAVED</div>
-      <h2 class="page-title">知识点收藏</h2>
-      <p class="page-lead">在错题卡片上点「知识点」，讲解页面正文会存进本地数据库，随时可以离线回看。</p>
+      <h2 class="page-title">收藏与笔记</h2>
+      <p class="page-lead">按套卷整理的知识点收藏与题目笔记；笔记在重做时记录，可快速跳回原题或合并导出。</p>
+    </section>
+
+    <section class="card" id="section-notes">
+      <div class="step-head">
+        <div class="step-no">✎</div>
+        <h2>题目笔记</h2>
+      </div>
+      <p class="hint">重做每道题时在右侧记录，按套卷年份分类；每条笔记都可跳回该题。</p>
+      <div class="kp-toolbar">
+        <span class="kp-toolbar-note" id="notes-count">共 0 条笔记</span>
+        <button class="qbtn primary" id="notes-export" type="button">合并导出</button>
+      </div>
+      <div id="notes-list">
+        <div class="practice-empty">还没有题目笔记。</div>
+      </div>
     </section>
 
     <section class="card" id="section-saved">
@@ -3415,6 +3450,7 @@
         subject: q.subject || '',
         paper: quiz && quiz.paper ? quiz.paper : '',
         page_path: q.page_path || '',
+        question_url: q.question_url || '',
         stem: (q.stem || '').replace(/\s+/g, ' ').slice(0, 120),
         note: text,
         updated_at: new Date().toISOString()
@@ -3462,6 +3498,109 @@
     document.body.removeChild(link);
     setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
     toast('已导出 ' + list.length + ' 条笔记。');
+  }
+
+  function findStaticQuestion(item) {
+    var bank = state.staticBank || {};
+    var page = bank[item.page_path];
+    if (page && page.questions && page.questions[item.id]) {
+      return page.questions[item.id];
+    }
+    var found = null;
+    Object.keys(bank).forEach(function (path) {
+      var questions = (bank[path] || {}).questions || {};
+      if (questions[item.id]) found = questions[item.id];
+    });
+    return found;
+  }
+
+  function startNoteQuiz(q, item) {
+    go('practice');
+    beginQuiz([q], (item.paper || '笔记') + ' · 第 ' + (item.num || '?') + ' 题',
+      { paper: item.paper || '' });
+  }
+
+  function jumpToNoteQuestion(item) {
+    if (STATIC_MODE) {
+      var saved = findStaticQuestion(item);
+      if (saved) startNoteQuiz(saved, item);
+      else toast('未找到该题目。');
+      return;
+    }
+    var pages = item.page_path ? [item.page_path] : [];
+    if (!pages.length) {
+      toast('这条笔记缺少套卷信息。');
+      return;
+    }
+    fetch('/api/questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pages: pages, include_essay: true })
+    })
+      .then(function (resp) { return resp.json(); })
+      .then(function (data) {
+        var q = null;
+        (data.questions || []).forEach(function (x) { if (x.id === item.id) q = x; });
+        if (q) startNoteQuiz(q, item);
+        else toast('未找到该题目。');
+      })
+      .catch(function () { toast('读取题目失败。'); });
+  }
+
+  function renderNotes() {
+    var box = $('notes-list');
+    if (!box) return;
+    var all = loadNotes();
+    var list = Object.keys(all).map(function (key) { return all[key]; })
+      .filter(function (item) { return item && item.note && item.note.trim(); });
+    $('notes-count').textContent = '共 ' + list.length + ' 条笔记';
+    box.innerHTML = '';
+    if (!list.length) {
+      box.appendChild(el('div', 'practice-empty', '还没有题目笔记。在重做页每道题右侧即可记录。'));
+      return;
+    }
+    var byPaper = {};
+    list.forEach(function (item) {
+      var paper = item.paper || '未标注套卷';
+      if (!byPaper[paper]) byPaper[paper] = [];
+      byPaper[paper].push(item);
+    });
+    Object.keys(byPaper).sort().forEach(function (paper) {
+      box.appendChild(el('div', 'notes-paper', paper));
+      byPaper[paper].sort(function (a, b) {
+        return (parseInt(a.num, 10) || 0) - (parseInt(b.num, 10) || 0);
+      }).forEach(function (item) {
+        var card = el('div', 'note-card');
+        var head = el('div', 'note-head');
+        head.appendChild(el('span', 'qnum', '第 ' + (item.num || '?') + ' 题'));
+        if (item.subject) head.appendChild(el('span', 'badge gray', item.subject));
+        if (item.updated_at) head.appendChild(el('span', 'pq-meta', item.updated_at.slice(0, 10)));
+        card.appendChild(head);
+        if (item.stem) card.appendChild(el('div', 'note-stem', item.stem));
+        card.appendChild(el('div', 'note-body', item.note));
+
+        var actions = el('div', 'note-actions');
+        var jump = el('button', 'qbtn primary', '查看题目');
+        jump.type = 'button';
+        jump.addEventListener('click', function () { jumpToNoteQuestion(item); });
+        actions.appendChild(jump);
+        var url = item.question_url ||
+          (item.page_path ? 'https://www.csgraduates.com' + item.page_path : '');
+        if (url) actions.appendChild(linkEl('原题 ↗', url, 'qbtn'));
+        var del = el('button', 'qbtn', '删除');
+        del.type = 'button';
+        del.addEventListener('click', function () {
+          if (!confirm('删除这条笔记？')) return;
+          var notes = loadNotes();
+          delete notes[item.id];
+          localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+          renderNotes();
+        });
+        actions.appendChild(del);
+        card.appendChild(actions);
+        box.appendChild(card);
+      });
+    });
   }
 
   function renderSheetQuestion(q, index) {
@@ -4540,6 +4679,7 @@
         renderKps();
         activate(routeName());
         $('kp-print').addEventListener('click', printKps);
+        $('notes-export').addEventListener('click', exportNotesMarkdown);
         if (!data.report) go('saved');
       })
       .catch(function (err) {
@@ -4557,6 +4697,7 @@
     loadKps();
     loadBankPapers();
     $('kp-print').addEventListener('click', printKps);
+    $('notes-export').addEventListener('click', exportNotesMarkdown);
     bindManage();
   }
 
@@ -4588,6 +4729,9 @@
     });
     if (name === 'report' && state.report) {
       renderReport(state.report.groups || []);
+    }
+    if (name === 'saved') {
+      renderNotes();
     }
     if (name === 'essay' && !STATIC_MODE && !essayInitialized) {
       essayInitialized = true;
